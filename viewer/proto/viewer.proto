@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+option go_package = "github.com/mingkaic/ultrasound/viewer/proto";
+
+package viewer;
+
+import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
+
+// ======== GENERAL MESSAGE OBJECTS ========
+
+message NodeInfo {
+    int32 id = 1;
+
+    repeated string labels = 2;
+
+    string repr = 3;
+
+    repeated uint32 shape = 4;
+
+    google.protobuf.Timestamp created = 5;
+
+    google.protobuf.Timestamp updated = 6;
+}
+
+message EdgeInfo {
+    int32 parent = 1;
+
+    int32 child = 2;
+
+    string label = 3;
+
+    google.protobuf.Timestamp created = 4;
+
+    google.protobuf.Timestamp updated = 5;
+}
+
+message GraphInfo {
+    int32 graph_id = 1;
+
+    repeated NodeInfo nodes = 2;
+
+    repeated EdgeInfo edges = 3;
+}
+
+message NodeData {
+    int32 id = 1;
+
+    repeated float data = 2;
+
+    google.protobuf.Timestamp created = 3;
+
+    google.protobuf.Timestamp updated = 4;
+}
+
+enum Status {
+    OK = 0;
+    BAD_INPUT = 1; // basically 400's error
+    INTERNAL_ERR = 2; // basically 500's error
+    UNKNOWN = 3; // something bad
+}
+
+// ======== REQUEST + RESPONSE MESSAGES ========
+
+message ListGraphRequest {}
+
+message ListGraphResponse {
+    repeated int32 result = 1;
+
+    Status status = 2;
+
+    string message = 3;
+}
+
+message GetGraphRequest {
+    int32 graph_id = 1;
+}
+
+message GetGraphResponse {
+    GraphInfo result = 1;
+
+    Status status = 2;
+
+    string message = 3;
+}
+
+message GetNodeDataRequest {
+    int32 graph_id = 1;
+    repeated int32 ids = 2;
+}
+
+message GetNodeDataResponse {
+    NodeData result = 1;
+}
+
+message DeleteGraphRequest {
+    int32 graph_id = 1;
+}
+
+message DeleteGraphResponse {
+    Status status = 1;
+}
+
+service Viewer {
+    // List all graph ids
+    rpc ListGraph (ListGraphRequest) returns (ListGraphResponse) {
+        option (google.api.http) = {
+            get: "/v1/graph"
+        };
+    }
+
+    // Get GraphInfo specified by id
+    rpc GetGraph (GetGraphRequest) returns (GetGraphResponse) {
+        option (google.api.http) = {
+            get: "/v1/graph/{graph_id}"
+        };
+    }
+
+    // Get all NodeData specified by ids
+    rpc GetNodeData (GetNodeDataRequest) returns (stream GetNodeDataResponse) {
+        option (google.api.http) = {
+            get: "/v1/nodes/{graph_id}"
+        };
+    }
+
+    // Delete graph
+    rpc DeleteGraph (DeleteGraphRequest) returns (DeleteGraphResponse) {
+        option (google.api.http) = {
+            delete: "/v1/graph"
+        };
+    }
+}

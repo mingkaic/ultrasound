@@ -1,0 +1,14 @@
+licenses(["notice"])
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+######### LIBRARY #########
+
+cc_binary(
+    name = "demo",
+    srcs = ["demo.cpp"],
+    copts = ["-std=c++17"],
+    deps = ["//proto:ultrasound_cc_proto"],
+)

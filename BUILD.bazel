@@ -1,0 +1,20 @@
+licenses(["notice"])
+
+load("@bazel_gazelle//:def.bzl", "gazelle")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "srcs",
+    srcs = [
+        "BUILD.bazel",
+        "//data:srcs",
+        "//server:srcs",
+        "//proto:srcs",
+    ],
+)
+
+# ===== GO GENERATOR =====
+
+# gazelle:prefix github.com/mingkaic/ultrasound
+gazelle(name = "gazelle")

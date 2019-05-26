@@ -1,0 +1,15 @@
+version: '2'
+services:
+  db:
+    image: ultra-db:latest
+    environment:
+      - POSTGRES_DB=ultra
+    container_name: ultra-db
+  ultrasound:
+    image: bazel/server:ultrasound_server
+    command:
+      - -db.host=db
+      - -db.name=ultra
+      - -port=8080
+    ports:
+      - '8080:8080'
