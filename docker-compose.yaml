@@ -10,6 +10,6 @@ services:
     command:
       - -db.host=db
       - -db.name=ultra
-      - -port=8080
+      - -port=50051
     ports:
-      - '8080:8080'
+      - '50051:50051'

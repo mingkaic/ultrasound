@@ -9,60 +9,57 @@ SET default_with_oids = false;
 
 -- nodes
 CREATE TABLE nodes (
-    id INTEGER NOT NULL,
-    graph_id INTEGER NOT NULL,
+    graph_id CHARACTER(36) NOT NULL,
     node_id INTEGER NOT NULL,
-    representation CHARACTER VARYING(64),
-    shape INTEGER[8]
+    shape CHARACTER VARYING(32),
+    maxheight INTEGER,
+    minheight INTEGER
 );
-
-CREATE SEQUENCE nodes_id_seq
-    START WITH 1 INCREMENT BY 1
-    NO MINVALUE NO MAXVALUE CACHE 1;
-
-ALTER SEQUENCE nodes_id_seq OWNED BY nodes.id;
 
 
 -- edges
 CREATE TABLE edges (
-    graph_id INTEGER NOT NULL,
+    graph_id CHARACTER(36) NOT NULL,
     parent_id INTEGER NOT NULL,
     child_id INTEGER NOT NULL,
-    label CHARACTER VARYING(64)
+    label CHARACTER VARYING(64) NOT NULL,
+    shaper CHARACTER VARYING(512),
+    coorder CHARACTER VARYING(512)
 );
 
 
 -- labels assigned to nodes
-CREATE TABLE node_labels (
-    graph_id INTEGER NOT NULL,
+CREATE TABLE node_tags (
+    graph_id CHARACTER(36) NOT NULL,
     node_id INTEGER NOT NULL,
-    label CHARACTER VARYING(64)
+    tag_key CHARACTER VARYING(64) NOT NULL,
+    tag_val CHARACTER VARYING(64)
 );
 
 
 -- data assigned to nodes
 CREATE TABLE node_data (
-    id INTEGER NOT NULL,
-    index INTEGER NOT NULL,
-    datum DECIMAL NOT NULL
+    graph_id CHARACTER(36) NOT NULL,
+    node_id INTEGER NOT NULL,
+    data DECIMAL[]
 );
 
 
 -- primary keys
 ALTER TABLE ONLY nodes
-    ADD CONSTRAINT pk_nodes PRIMARY KEY (id);
+    ADD CONSTRAINT pk_nodes PRIMARY KEY (graph_id, node_id);
 
 ALTER TABLE ONLY edges
-    ADD CONSTRAINT pk_edges PRIMARY KEY (graph_id, parent_id, child_id);
+    ADD CONSTRAINT pk_edges PRIMARY KEY (graph_id, parent_id, child_id, label);
 
-ALTER TABLE ONLY node_labels
-    ADD CONSTRAINT pk_node_labels PRIMARY KEY (graph_id, node_id);
+ALTER TABLE ONLY node_tags
+    ADD CONSTRAINT pk_node_labels PRIMARY KEY (graph_id, node_id, tag_key);
 
 ALTER TABLE ONLY node_data
-    ADD CONSTRAINT pk_node_data PRIMARY KEY (id, index);
+    ADD CONSTRAINT pk_node_data PRIMARY KEY (graph_id, node_id);
 
 
--- foreign keys
+-- indexing
 CREATE UNIQUE INDEX index_nodes_graph_node_id
     ON nodes USING BTREE (graph_id, node_id);
 
@@ -72,18 +69,20 @@ CREATE INDEX index_edges_parent_id
 CREATE INDEX index_edges_child_id
     ON edges USING BTREE (graph_id, child_id);
 
-CREATE INDEX index_node_labels_id ON node_labels USING BTREE (graph_id, node_id);
+CREATE INDEX index_node_labels_id ON node_tags USING BTREE (graph_id, node_id);
 
-CREATE INDEX index_node_data_id ON node_data USING BTREE (id);
+CREATE INDEX index_node_data_id ON node_data USING BTREE (graph_id, node_id);
 
+
+-- foreign keys
 ALTER TABLE ONLY edges ADD CONSTRAINT fk_edges_graph_parent_id
     FOREIGN KEY (graph_id, parent_id) REFERENCES nodes(graph_id, node_id);
 
 ALTER TABLE ONLY edges ADD CONSTRAINT fk_edges_graph_child_id
     FOREIGN KEY (graph_id, child_id) REFERENCES nodes(graph_id, node_id);
 
-ALTER TABLE ONLY node_labels ADD CONSTRAINT fk_node_graph_node_id
+ALTER TABLE ONLY node_tags ADD CONSTRAINT fk_node_graph_node_id
     FOREIGN KEY (graph_id, node_id) REFERENCES nodes(graph_id, node_id);
 
 ALTER TABLE ONLY node_data ADD CONSTRAINT fk_node_data_id
-    FOREIGN KEY (id) REFERENCES nodes(id);
+    FOREIGN KEY (graph_id, node_id) REFERENCES nodes(graph_id, node_id);

@@ -12,4 +12,4 @@ build_db:
 
 .PHONY: build_server
 build_server:
-	bazel build //server:ultrasound_server
+	bazel run //server:ultrasound_server

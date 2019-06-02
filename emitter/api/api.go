@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"strings"
 
 	"github.com/jinzhu/gorm"
 	"github.com/mingkaic/ultrasound/data"
@@ -19,9 +22,21 @@ func NewEmitterServer() pb.GraphEmitterServer {
 	return &emitterServer{}
 }
 
+func convertPbShape(shape []uint32) string {
+	slist := make([]string, len(shape))
+	for i, dim := range shape {
+		slist[i] = fmt.Sprintf("%d", dim)
+	}
+	return strings.Join(slist, ",")
+}
+
+func (*emitterServer) HealthCheck(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	return &pb.Empty{}, nil
+}
+
 func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphRequest) (*pb.CreateGraphResponse, error) {
 	graphInfo := req.Payload
-	id := graphInfo.GraphId
+	gid := graphInfo.GraphId
 
 	if nil == graphInfo.Nodes {
 		return nil, status.Errorf(codes.InvalidArgument, "missing nodes from GraphInfo")
@@ -32,29 +47,44 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 
 	nodes := make([]*data.Node, len(graphInfo.Nodes))
 	edges := make([]*data.Edge, len(graphInfo.Edges))
-	labels := make([]*data.NodeLabel, 0)
+	tags := make([]*data.NodeTag, 0, len(graphInfo.Nodes))
 	for i, node := range graphInfo.Nodes {
-		nodes[i] = &data.Node{
-			GraphID: id,
-			NodeID:  node.Id,
-			Repr:    node.Repr,
-			Shape:   node.Shape,
+		var (
+			maxheight int
+			minheight int
+			loc       = node.Location
+		)
+		if loc != nil {
+			maxheight = int(loc.Maxheight)
 		}
-		for _, label := range node.Labels {
-			labels = append(labels, &data.NodeLabel{
-				GraphID: id,
-				NodeID:  node.Id,
-				Label:   label,
+		if loc != nil {
+			minheight = int(loc.Minheight)
+		}
+		nodes[i] = &data.Node{
+			GraphID:   gid,
+			NodeID:    int(node.Id),
+			Shape:     convertPbShape(node.Shape),
+			Maxheight: maxheight,
+			Minheight: minheight,
+		}
+		for key, value := range node.Tags {
+			tags = append(tags, &data.NodeTag{
+				GraphID: gid,
+				NodeID:  int(node.Id),
+				TagKey:  key,
+				TagVal:  value,
 			})
 		}
 	}
 
 	for i, edge := range graphInfo.Edges {
 		edges[i] = &data.Edge{
-			GraphID: id,
-			Parent:  edge.Parent,
-			Child:   edge.Child,
-			Label:   edge.Label,
+			GraphID:  gid,
+			ParentID: int(edge.Parent),
+			ChildID:  int(edge.Child),
+			Label:    edge.Label,
+			Shaper:   edge.Shaper,
+			Coorder:  edge.Coorder,
 		}
 	}
 
@@ -63,12 +93,10 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 		if err = gData.CreateNodes(nodes); err != nil {
 			return
 		}
-		if err = gData.LabelNodes(labels); err != nil {
+		if err = gData.TagNodes(tags); err != nil {
 			return
 		}
-		if err = gData.CreateEdges(edges); err != nil {
-			return
-		}
+		err = gData.CreateEdges(edges)
 		return
 	}); err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
@@ -80,10 +108,36 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 	}, nil
 }
 
-func (*emitterServer) UpdateNodeMeta(srv pb.GraphEmitter_UpdateNodeMetaServer) error {
-	return status.Errorf(codes.Unimplemented, "method UpdateNodeMeta not implemented")
-}
+func (*emitterServer) UpdateNodeData(stream pb.GraphEmitter_UpdateNodeDataServer) error {
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return stream.SendAndClose(&pb.UpdateNodeDataResponse{
+				Status:  pb.Status_OK,
+				Message: "Successfully updated node data",
+			})
+		}
+		if err != nil {
+			return err
+		}
 
-func (*emitterServer) UpdateNodeData(srv pb.GraphEmitter_UpdateNodeDataServer) error {
-	return status.Errorf(codes.Unimplemented, "method UpdateNodeData not implemented")
+		dataInfo := req.Payload
+		datarr := make([]float64, len(dataInfo.Data))
+		for i, datum := range dataInfo.Data {
+			datarr[i] = float64(datum)
+		}
+		dentry := &data.NodeData{
+			GraphID: dataInfo.GraphId,
+			NodeID:  int(dataInfo.NodeId),
+			RawData: datarr,
+		}
+
+		if err := data.Transaction(func(db *gorm.DB) (err error) {
+			gData := data.NewGraphData(db)
+			err = gData.UpdateData(dentry)
+			return
+		}); err != nil {
+			return status.Errorf(codes.Internal, err.Error())
+		}
+	}
 }

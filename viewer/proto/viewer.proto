@@ -9,14 +9,22 @@ import "google/api/annotations.proto";
 
 // ======== GENERAL MESSAGE OBJECTS ========
 
+message NodeLoc {
+    // maximum distance from a leaf node
+    uint32 maxheight = 1;
+
+    // minimum distance from a leaf node
+    uint32 minheight = 2;
+}
+
 message NodeInfo {
     int32 id = 1;
 
-    repeated string labels = 2;
+    repeated uint32 shape = 2;
 
-    string repr = 3;
+    map<string,string> tags = 3;
 
-    repeated uint32 shape = 4;
+    NodeLoc location = 4;
 
     google.protobuf.Timestamp created = 5;
 
@@ -30,13 +38,17 @@ message EdgeInfo {
 
     string label = 3;
 
-    google.protobuf.Timestamp created = 4;
+    string shaper = 4;
 
-    google.protobuf.Timestamp updated = 5;
+    string coorder = 5;
+
+    google.protobuf.Timestamp created = 6;
+
+    google.protobuf.Timestamp updated = 7;
 }
 
 message GraphInfo {
-    int32 graph_id = 1;
+    string graph_id = 1;
 
     repeated NodeInfo nodes = 2;
 
@@ -44,13 +56,15 @@ message GraphInfo {
 }
 
 message NodeData {
-    int32 id = 1;
+    string graph_id = 1;
 
-    repeated float data = 2;
+    int32 node_id = 2;
 
-    google.protobuf.Timestamp created = 3;
+    repeated float data = 3;
 
-    google.protobuf.Timestamp updated = 4;
+    google.protobuf.Timestamp created = 4;
+
+    google.protobuf.Timestamp updated = 5;
 }
 
 enum Status {
@@ -65,7 +79,7 @@ enum Status {
 message ListGraphRequest {}
 
 message ListGraphResponse {
-    repeated int32 result = 1;
+    repeated string result = 1;
 
     Status status = 2;
 
@@ -73,7 +87,7 @@ message ListGraphResponse {
 }
 
 message GetGraphRequest {
-    int32 graph_id = 1;
+    string graph_id = 1;
 }
 
 message GetGraphResponse {
@@ -85,48 +99,55 @@ message GetGraphResponse {
 }
 
 message GetNodeDataRequest {
-    int32 graph_id = 1;
-    repeated int32 ids = 2;
+    string graph_id = 1;
+
+    int32 node_id = 2;
 }
 
 message GetNodeDataResponse {
     NodeData result = 1;
+
+    Status status = 2;
+
+    string message = 3;
 }
 
 message DeleteGraphRequest {
-    int32 graph_id = 1;
+    string graph_id = 1;
 }
 
 message DeleteGraphResponse {
     Status status = 1;
+
+    string message = 2;
 }
 
 service Viewer {
     // List all graph ids
-    rpc ListGraph (ListGraphRequest) returns (ListGraphResponse) {
+    rpc ListGraphs (ListGraphRequest) returns (ListGraphResponse) {
         option (google.api.http) = {
-            get: "/v1/graph"
+            get: "/v1/graphs"
         };
     }
 
-    // Get GraphInfo specified by id
+    // Get GraphInfo specified by graph id
     rpc GetGraph (GetGraphRequest) returns (GetGraphResponse) {
         option (google.api.http) = {
-            get: "/v1/graph/{graph_id}"
+            get: "/v1/graphs/{graph_id}"
         };
     }
 
-    // Get all NodeData specified by ids
-    rpc GetNodeData (GetNodeDataRequest) returns (stream GetNodeDataResponse) {
+    // Get NodeData specified by graph id and node id
+    rpc GetNodeData (GetNodeDataRequest) returns (GetNodeDataResponse) {
         option (google.api.http) = {
-            get: "/v1/nodes/{graph_id}"
+            get: "/v1/graphs/{graph_id}/{node_id}"
         };
     }
 
     // Delete graph
     rpc DeleteGraph (DeleteGraphRequest) returns (DeleteGraphResponse) {
         option (google.api.http) = {
-            delete: "/v1/graph"
+            delete: "/v1/graphs/{graph_id}"
         };
     }
 }

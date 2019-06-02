@@ -31,9 +31,9 @@ py_proto_library(
 )
 """
 
-def google_apis_repository(name):
+def google_apis_repository():
     new_git_repository(
-        name = name,
+        name = "com_github_googleapis",
         remote = "https://github.com/googleapis/googleapis",
         commit = "8f1de3d40e2835d30f4c0bc861b4e8e8ec551138",
         build_file_content = GOOGLEAPIS_BUILD,
