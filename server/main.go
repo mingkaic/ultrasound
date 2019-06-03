@@ -1,33 +1,53 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"net"
+	"os"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/mingkaic/ultrasound/data"
-	emitterAPI "github.com/mingkaic/ultrasound/emitter/api"
-	emitterProto "github.com/mingkaic/ultrasound/emitter/proto"
-	viewerAPI "github.com/mingkaic/ultrasound/viewer/api"
-	viewerProto "github.com/mingkaic/ultrasound/viewer/proto"
-
-	"google.golang.org/grpc"
+	"github.com/mingkaic/ultrasound/server/core"
+	"github.com/mingkaic/ultrasound/server/gateway"
 )
+
+func runServers(ctx context.Context) <-chan error {
+	grpcAddr := fmt.Sprintf(":%d", cfg.GRPCPort)
+	gwAddr := fmt.Sprintf(":%d", cfg.GatewayPort)
+	ch := make(chan error, 2)
+	// grpc service
+	go func() {
+		if err := core.Run(ctx, cfg.Network, grpcAddr); err != nil {
+			ch <- fmt.Errorf("failed to run grpc service: %v", err)
+		}
+	}()
+	// http gateway
+	go func() {
+		if err := gateway.Run(ctx, gateway.Options{
+			Addr: gwAddr,
+			GRPCServer: gateway.Endpoint{
+				Network: cfg.Network,
+				Addr:    grpcAddr,
+			},
+		}); err != nil {
+			ch <- fmt.Errorf("failed to run gateway service: %v", err)
+		}
+	}()
+	return ch
+}
 
 func main() {
 	data.Open(&dbParams)
 	defer data.Close()
 
-	host := fmt.Sprintf(":%d", cfg.Port)
-	log.Infof("listening on '%s'", host)
-	listen, err := net.Listen("tcp", host)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	grpcServer := grpc.NewServer()
-	viewerProto.RegisterViewerServer(grpcServer, viewerAPI.NewViewerServer())
-	emitterProto.RegisterGraphEmitterServer(grpcServer, emitterAPI.NewEmitterServer())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := runServers(ctx)
 
-	grpcServer.Serve(listen)
+	select {
+	case err := <-errCh:
+		log.Fatalf(err.Error())
+		os.Exit(1)
+	}
 }

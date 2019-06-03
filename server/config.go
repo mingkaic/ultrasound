@@ -8,7 +8,9 @@ import (
 )
 
 type Config struct {
-	Port int
+	Network     string
+	GRPCPort    int
+	GatewayPort int
 }
 
 var (
@@ -17,7 +19,10 @@ var (
 )
 
 func init() {
-	flag.IntVar(&cfg.Port, "port", 8080, "gRPC port to serve on (default: 8080)")
+	flag.StringVar(&cfg.Network, "network", "tcp",
+		`one of "tcp" or "unix". Must be consistent to -port`)
+	flag.IntVar(&cfg.GatewayPort, "gw.port", 8080, "gateway port to serve on (default: 8080)")
+	flag.IntVar(&cfg.GRPCPort, "grpc.port", 50051, "gRPC port to serve on (default: 50051)")
 	dbParams.DeclFlags()
 	flag.Parse()
 

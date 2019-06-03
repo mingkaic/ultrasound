@@ -27,16 +27,6 @@ load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 
 gazelle_dependencies()
 
-git_repository(
-    name = "com_github_grpc_ecosystem_grpc_gateway",
-    remote = "https://github.com/grpc-ecosystem/grpc-gateway",
-    commit = "aeab1d96e0f1368d243e2e5f526aa29d495517bb",
-)
-
-load("@com_github_grpc_ecosystem_grpc_gateway//:repositories.bzl", "repositories")
-
-repositories()
-
 http_archive(
     name = "io_bazel_rules_docker",
     sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
@@ -99,3 +89,31 @@ go_repository(
     commit = "4ded0e9383f75c197b3a2aaa6d590ac52df6fd79",
     importpath = "github.com/lib/pq",
 )
+
+go_repository(
+    name = "com_github_grpc_ecosystem_grpc_gateway",
+    commit = "e6f18d33a7b3bfa5b94f3d5fb513252184ce2d90",
+    importpath = "github.com/grpc-ecosystem/grpc-gateway",
+)
+
+go_repository(
+    name = "com_github_ghodss_yaml",
+    commit = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7",
+    importpath = "github.com/ghodss/yaml",
+)
+
+go_repository(
+    name = "in_gopkg_yaml_v2",
+    commit = "eb3733d160e74a9c7e442f435eb3bea458e1d19f",
+    importpath = "gopkg.in/yaml.v2",
+)
+
+http_archive(
+    name = "com_github_bazelbuild_buildtools",
+    strip_prefix = "buildtools-bf564b4925ab5876a3f64d8b90fab7f769013d42",
+    url = "https://github.com/bazelbuild/buildtools/archive/bf564b4925ab5876a3f64d8b90fab7f769013d42.zip",
+)
+
+load("@com_github_bazelbuild_buildtools//buildifier:deps.bzl", "buildifier_dependencies")
+
+buildifier_dependencies()

@@ -43,6 +43,7 @@ func (*viewerServer) ListGraphs(ctx context.Context, req *pb.ListGraphRequest) (
 		gids, err = gData.ListGraphs()
 		return
 	}); err != nil {
+		log.Error(err.Error())
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 	return &pb.ListGraphResponse{
@@ -80,6 +81,7 @@ func (*viewerServer) GetGraph(ctx context.Context, req *pb.GetGraphRequest) (*pb
 		}
 		return
 	}); err != nil {
+		log.Error(err.Error())
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 	pbNodes := make([]*pb.NodeInfo, len(nodes))
@@ -125,6 +127,7 @@ func (*viewerServer) GetNodeData(ctx context.Context, req *pb.GetNodeDataRequest
 		node, err = gData.GetNodeData(gid, int(nid))
 		return
 	}); err != nil {
+		log.Error(err.Error())
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 	rdata := make([]float32, len(node.RawData))

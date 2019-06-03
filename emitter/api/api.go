@@ -9,6 +9,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/mingkaic/ultrasound/data"
 	pb "github.com/mingkaic/ultrasound/emitter/proto"
+	log "github.com/sirupsen/logrus"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -99,6 +100,7 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 		err = gData.CreateEdges(edges)
 		return
 	}); err != nil {
+		log.Error(err.Error())
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
@@ -137,6 +139,7 @@ func (*emitterServer) UpdateNodeData(stream pb.GraphEmitter_UpdateNodeDataServer
 			err = gData.UpdateData(dentry)
 			return
 		}); err != nil {
+			log.Error(err.Error())
 			return status.Errorf(codes.Internal, err.Error())
 		}
 	}

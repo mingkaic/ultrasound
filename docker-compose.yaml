@@ -10,6 +10,7 @@ services:
     command:
       - -db.host=db
       - -db.name=ultra
-      - -port=50051
+      - -grpc.port=50051
     ports:
       - '50051:50051'
+      - '8080:8080'

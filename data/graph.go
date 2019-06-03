@@ -60,7 +60,7 @@ func NewGraphData(db *gorm.DB) GraphData {
 }
 
 func (d *graphData) ListGraphs() ([]string, error) {
-	rows, err := d.db.Exec(`
+	rows, err := d.db.Raw(`
 		SELECT distinct graph_id
 		FROM nodes
 		`).Rows()
@@ -94,7 +94,7 @@ func (d *graphData) ListEdges(params map[string]interface{}) (out []*Edge, err e
 }
 
 func (d *graphData) GetNodeData(graphID string, nodeID int) (out *NodeData, err error) {
-	row := d.db.Exec(`
+	row := d.db.Raw(`
 		SELECT data
 		FROM node_data
 		WHERE graph_id = ? and node_id = ?
