@@ -94,19 +94,19 @@ func (d *graphData) ListEdges(params map[string]interface{}) (out []*Edge, err e
 }
 
 func (d *graphData) GetNodeData(graphID string, nodeID int) (out *NodeData, err error) {
-	row := d.db.Raw(`
+	holder := struct{ Data []float64 }{}
+	err = d.db.Raw(`
 		SELECT data
 		FROM node_data
 		WHERE graph_id = ? and node_id = ?
-		`, graphID, nodeID).Row()
-	var rawdata []float64
-	if err = row.Scan(&rawdata); err != nil {
+		`, graphID, nodeID).Scan(&holder).Error
+	if err != nil {
 		return
 	}
 	out = &NodeData{
 		GraphID: graphID,
 		NodeID:  nodeID,
-		RawData: rawdata,
+		RawData: holder.Data,
 	}
 	return
 }

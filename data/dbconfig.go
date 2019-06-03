@@ -103,15 +103,15 @@ func DB() *gorm.DB {
 	return db
 }
 
-func Transaction(f func(db *gorm.DB) error) (err error) {
+func Transaction(f func(db *gorm.DB) error) error {
 	transaction := DB().Begin()
-	if err = transaction.Error; err != nil {
-		return
+	if err := transaction.Error; err != nil {
+		return err
 	}
 
-	if err = f(transaction); err != nil {
-		if err = transaction.Rollback().Error; err != nil {
-			log.Errorf("Failed to rollback DB transaction: %v", err)
+	if err := f(transaction); err != nil {
+		if transErr := transaction.Rollback().Error; transErr != nil {
+			log.Errorf("Failed to rollback DB transaction: %v", transErr)
 		}
 		return err
 	}

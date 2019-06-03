@@ -106,12 +106,20 @@ func (*viewerServer) GetGraph(ctx context.Context, req *pb.GetGraphRequest) (*pb
 			Coorder: edge.Coorder,
 		}
 	}
+	result := &pb.GraphInfo{
+		GraphId: gid,
+		Nodes:   pbNodes,
+		Edges:   pbEdges,
+	}
+	if len(pbNodes) <= 0 {
+		return &pb.GetGraphResponse{
+			Result:  result,
+			Status:  pb.Status_BAD_INPUT,
+			Message: fmt.Sprintf("Graph %s not found", gid),
+		}, nil
+	}
 	return &pb.GetGraphResponse{
-		Result: &pb.GraphInfo{
-			GraphId: gid,
-			Nodes:   pbNodes,
-			Edges:   pbEdges,
-		},
+		Result:  result,
 		Status:  pb.Status_OK,
 		Message: fmt.Sprintf("Got %s graph", gid),
 	}, nil
