@@ -62,9 +62,7 @@ message NodeData {
 
     repeated float data = 3;
 
-    google.protobuf.Timestamp created = 4;
-
-    google.protobuf.Timestamp updated = 5;
+    google.protobuf.Timestamp updated = 4;
 }
 
 enum Status {
@@ -74,12 +72,20 @@ enum Status {
     UNKNOWN = 3; // something bad
 }
 
+message GraphOverview {
+    string graph_id = 1;
+
+    google.protobuf.Timestamp created = 2;
+
+    google.protobuf.Timestamp updated = 3;
+}
+
 // ======== REQUEST + RESPONSE MESSAGES ========
 
 message ListGraphRequest {}
 
 message ListGraphResponse {
-    repeated string result = 1;
+    repeated GraphOverview result = 1;
 
     Status status = 2;
 

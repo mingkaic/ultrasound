@@ -1,27 +1,34 @@
 package data
 
 import (
-	"github.com/jinzhu/gorm"
+	"database/sql"
+	"time"
+
 	"github.com/lib/pq"
+	log "github.com/sirupsen/logrus"
 )
 
 type (
 	Node struct {
 		GraphID   string            `gorm:"graph_id"`
 		NodeID    int               `gorm:"node_id"`
-		Shape     string            `gorm:"shape"`
+		Shape     []int64           `gorm:"shape"`
 		Maxheight int               `gorm:"maxheight"`
 		Minheight int               `gorm:"minheight"`
 		Tags      map[string]string `sql:"-"`
+		CreatedAt time.Time         `gorm:"created_at"`
+		UpdatedAt time.Time         `gorm:"updated_at"`
 	}
 
 	Edge struct {
-		GraphID  string `gorm:"graph_id"`
-		ParentID int    `gorm:"parent_id"`
-		ChildID  int    `gorm:"child_id"`
-		Label    string `gorm:"label"`
-		Shaper   string `gorm:"shaper"`
-		Coorder  string `gorm:"coorder"`
+		GraphID   string    `gorm:"graph_id"`
+		ParentID  int       `gorm:"parent_id"`
+		ChildID   int       `gorm:"child_id"`
+		Label     string    `gorm:"label"`
+		Shaper    string    `gorm:"shaper"`
+		Coorder   string    `gorm:"coorder"`
+		CreatedAt time.Time `gorm:"created_at"`
+		UpdatedAt time.Time `gorm:"updated_at"`
 	}
 
 	NodeTag struct {
@@ -32,13 +39,20 @@ type (
 	}
 
 	NodeData struct {
-		GraphID string    `gorm:"graph_id"`
-		NodeID  int       `gorm:"node_id"`
-		RawData []float64 `sql:"-"`
+		GraphID   string    `gorm:"graph_id"`
+		NodeID    int       `gorm:"node_id"`
+		RawData   []float64 `gorm:"data"`
+		UpdatedAt time.Time `gorm:"updated_at"`
+	}
+
+	Graph struct {
+		GraphID   string
+		CreatedAt time.Time
+		UpdatedAt time.Time
 	}
 
 	GraphData interface {
-		ListGraphs() ([]string, error)
+		ListGraphs() ([]*Graph, error)
 		ListNodes(params map[string]interface{}) ([]*Node, error)
 		ListEdges(params map[string]interface{}) ([]*Edge, error)
 		GetNodeData(graphID string, nodeID int) (*NodeData, error)
@@ -46,130 +60,294 @@ type (
 
 		CreateNodes(nodes []*Node) error
 		CreateEdges(edges []*Edge) error
-		UpdateData(data *NodeData) error
-		TagNodes(tags []*NodeTag) error
+		UpsertData(data *NodeData) error
+		UpsertNodeTags(tags []*NodeTag) error
 	}
 
 	graphData struct {
-		db *gorm.DB
+		db *sql.Tx
 	}
 )
 
-func NewGraphData(db *gorm.DB) GraphData {
+var (
+	upsertTagStmtFmt = upsertStmt{
+		into: "node_tags",
+		keyFields: []string{
+			"graph_id", "node_id", "tag_key",
+		},
+		updateFields: []string{
+			"tag_val",
+		},
+	}
+)
+
+func NewGraphData(db *sql.Tx) GraphData {
 	return &graphData{db: db}
 }
 
-func (d *graphData) ListGraphs() ([]string, error) {
-	rows, err := d.db.Raw(`
-		SELECT distinct graph_id
-		FROM nodes
-		`).Rows()
+func (d *graphData) ListGraphs() ([]*Graph, error) {
+	rows, err := (&queryStmt{from: "nodes"}).query(d.db, "distinct graph_id")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	gids := []string{}
+	var (
+		gid  string
+		gids = []string{}
+	)
 	for rows.Next() {
-		var gid string
-		if rows.Scan(&gid) != nil {
-			break
+		if err := rows.Scan(&gid); err != nil {
+			return nil, err
 		}
 		gids = append(gids, gid)
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	return gids, nil
-}
 
-func (d *graphData) ListNodes(params map[string]interface{}) (out []*Node, err error) {
-	err = d.db.Find(&out, params).Error
-	return
-}
-
-func (d *graphData) ListEdges(params map[string]interface{}) (out []*Edge, err error) {
-	err = d.db.Find(&out, params).Error
-	return
-}
-
-func (d *graphData) GetNodeData(graphID string, nodeID int) (out *NodeData, err error) {
-	holder := struct{ Data []float64 }{}
-	err = d.db.Raw(`
-		SELECT data
-		FROM node_data
-		WHERE graph_id = ? and node_id = ?
-		`, graphID, nodeID).Scan(&holder).Error
+	stmt, args := (&queryStmt{from: "nodes"}).
+		where(map[string]interface{}{
+			"graph_id": gids,
+		}, "and").
+		generate("graph_id, max(created_at), max(updated_at)")
+	stmt += " group by graph_id"
+	sqlLog(stmt, args)
+	rowsDate, err := d.db.Query(stmt, args...)
 	if err != nil {
-		return
+		return nil, err
 	}
-	out = &NodeData{
-		GraphID: graphID,
-		NodeID:  nodeID,
-		RawData: holder.Data,
+	defer rowsDate.Close()
+	graphs := make([]*Graph, 0, len(gids))
+	for rowsDate.Next() {
+		entry := Graph{}
+		if err := rowsDate.Scan(
+			&entry.GraphID,
+			&entry.CreatedAt,
+			&entry.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		graphs = append(graphs, &entry)
 	}
-	return
-}
-
-func (d *graphData) TagNode(node *Node) (*Node, error) {
-	var tags []*NodeTag
-	if err := d.db.Where(map[string]interface{}{
-		"graph_id": node.GraphID,
-		"node_id":  node.NodeID,
-	}).Find(&tags).Error; err != nil {
+	if err = rowsDate.Err(); err != nil {
 		return nil, err
 	}
 
-	node.Tags = make(map[string]string)
-	for _, tag := range tags {
-		node.Tags[tag.TagKey] = tag.TagVal
+	return graphs, nil
+}
+
+func (d *graphData) ListNodes(params map[string]interface{}) ([]*Node, error) {
+	out := make([]*Node, 0)
+	rows, err := (&queryStmt{from: "nodes"}).
+		where(params, "and").
+		query(d.db, "*")
+	if err != nil {
+		return nil, err
 	}
+	defer rows.Close()
+
+	for rows.Next() {
+		entry := Node{}
+		if err := rows.Scan(
+			&entry.GraphID,
+			&entry.NodeID,
+			pq.Array(&entry.Shape),
+			&entry.Maxheight,
+			&entry.Minheight,
+			&entry.CreatedAt,
+			&entry.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, &entry)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (d *graphData) ListEdges(params map[string]interface{}) ([]*Edge, error) {
+	out := make([]*Edge, 0)
+	rows, err := (&queryStmt{from: "edges"}).
+		where(params, "and").
+		query(d.db, "*")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		entry := Edge{}
+		if err := rows.Scan(
+			&entry.GraphID,
+			&entry.ParentID,
+			&entry.ChildID,
+			&entry.Label,
+			&entry.Shaper,
+			&entry.Coorder,
+			&entry.CreatedAt,
+			&entry.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, &entry)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (d *graphData) GetNodeData(graphID string, nodeID int) (*NodeData, error) {
+	out := NodeData{
+		GraphID: graphID,
+		NodeID:  nodeID,
+	}
+	stmt, args := (&queryStmt{from: "node_data"}).
+		where(map[string]interface{}{
+			"graph_id": graphID,
+			"node_id":  nodeID,
+		}, "and").
+		generate("data")
+	sqlLog(stmt, args)
+	row := d.db.QueryRow(stmt, args...)
+	if err := row.Scan(pq.Array(&out.RawData)); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (d *graphData) TagNode(node *Node) (*Node, error) {
+	var (
+		key  string
+		val  string
+		tags = make(map[string]string)
+	)
+	rows, err := (&queryStmt{from: "node_tags"}).
+		where(map[string]interface{}{
+			"graph_id": node.GraphID,
+			"node_id":  node.NodeID,
+		}, "and").
+		query(d.db, "tag_key, tag_val")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		if err := rows.Scan(&key, &val); err != nil {
+			return nil, err
+		}
+		tags[key] = val
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	node.Tags = tags
 
 	return node, nil
 }
 
-func (d *graphData) CreateNodes(nodes []*Node) (err error) {
-	// todo: use BatchInsert once it's implemented
-	for _, node := range nodes {
-		if err = d.db.Create(node).Error; err != nil {
-			return
-		}
+func (d *graphData) CreateNodes(nodes []*Node) error {
+	nodeArgs := make([]interface{}, len(nodes))
+	for i, node := range nodes {
+		nodeArgs[i] = node
 	}
-	return
+	results, err := (&createStmt{
+		into: "nodes",
+		fields: []string{
+			"graph_id",
+			"node_id",
+			"shape",
+			"maxheight",
+			"minheight",
+			"created_at",
+			"updated_at",
+		},
+	}).modify(d.db, nodeArgs)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
 }
 
 func (d *graphData) CreateEdges(edges []*Edge) (err error) {
-	// todo: use BatchInsert once it's implemented
-	for _, edge := range edges {
-		if err = d.db.Create(edge).Error; err != nil {
-			return
-		}
+	edgeArgs := make([]interface{}, len(edges))
+	for i, edge := range edges {
+		edgeArgs[i] = edge
 	}
-	return
+	results, err := (&createStmt{
+		into: "edges",
+		fields: []string{
+			"graph_id",
+			"parent_id",
+			"child_id",
+			"label",
+			"shaper",
+			"coorder",
+			"created_at",
+			"updated_at",
+		},
+	}).modify(d.db, edgeArgs)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
 }
 
-func (d *graphData) UpdateData(dentry *NodeData) (err error) {
-	if err = d.db.FirstOrCreate(&NodeData{},
-		NodeData{
-			GraphID: dentry.GraphID,
-			NodeID:  dentry.NodeID,
-		}).Error; err != nil {
-		return
+func (d *graphData) UpsertData(entry *NodeData) (err error) {
+	results, err := (&upsertStmt{
+		into: "node_data",
+		keyFields: []string{
+			"graph_id", "node_id",
+		},
+		updateFields: []string{
+			"data", "updated_at",
+		},
+	}).modify(d.db, entry)
+	if err != nil {
+		return err
 	}
-	updateStmt := `
-	UPDATE ONLY node_data SET data = $1
-	WHERE graph_id = $2 AND node_id = $3
-	`
-	err = d.db.Exec(updateStmt, pq.Array(dentry.RawData), dentry.GraphID, dentry.NodeID).Error
-	return
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
 }
 
-func (d *graphData) TagNodes(tags []*NodeTag) (err error) {
-	// todo: use BatchInsert once it's implemented
-	for _, tag := range tags {
-		if err = d.db.Create(tag).Error; err != nil {
-			return
-		}
+func (d *graphData) UpsertNodeTags(tags []*NodeTag) (err error) {
+	tagArgs := make([]interface{}, len(tags))
+	for i, tag := range tags {
+		tagArgs[i] = tag
 	}
-	return
+	results, err := (&upsertStmt{
+		into: "node_tags",
+		keyFields: []string{
+			"graph_id", "node_id", "tag_key",
+		},
+		updateFields: []string{
+			"tag_val",
+		},
+	}).modify(d.db, tagArgs)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
 }

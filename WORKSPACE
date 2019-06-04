@@ -67,18 +67,6 @@ grpc_deps()
 # === golang external dependencies ===
 
 go_repository(
-    name = "com_github_jinzhu_gorm",
-    commit = "6ed508ec6a4ecb3531899a69cbc746ccf65a4166",
-    importpath = "github.com/jinzhu/gorm",
-)
-
-go_repository(
-    name = "com_github_jinzhu_inflection",
-    commit = "04140366298a54a039076d798123ffa108fff46c",
-    importpath = "github.com/jinzhu/inflection",
-)
-
-go_repository(
     name = "com_github_sirupsen_logrus",
     commit = "2a22dbedbad1fd454910cd1f44f210ef90c28464",
     importpath = "github.com/sirupsen/logrus",

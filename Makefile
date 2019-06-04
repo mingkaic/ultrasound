@@ -6,6 +6,9 @@ up: build_db build_server
 down:
 	docker-compose down
 
+.PHONY: restart
+restart: down up
+
 .PHONY: build_db
 build_db:
 	docker build -t ultra-db db

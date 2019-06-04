@@ -2,11 +2,10 @@ package api
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"io"
-	"strings"
+	"time"
 
-	"github.com/jinzhu/gorm"
 	"github.com/mingkaic/ultrasound/data"
 	pb "github.com/mingkaic/ultrasound/emitter/proto"
 	log "github.com/sirupsen/logrus"
@@ -23,12 +22,12 @@ func NewEmitterServer() pb.GraphEmitterServer {
 	return &emitterServer{}
 }
 
-func convertPbShape(shape []uint32) string {
-	slist := make([]string, len(shape))
+func convertPbShape(shape []uint32) []int64 {
+	slist := make([]int64, len(shape))
 	for i, dim := range shape {
-		slist[i] = fmt.Sprintf("%d", dim)
+		slist[i] = int64(dim)
 	}
-	return strings.Join(slist, ",")
+	return slist
 }
 
 func (*emitterServer) HealthCheck(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
@@ -67,6 +66,8 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 			Shape:     convertPbShape(node.Shape),
 			Maxheight: maxheight,
 			Minheight: minheight,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 		for key, value := range node.Tags {
 			tags = append(tags, &data.NodeTag{
@@ -80,21 +81,23 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 
 	for i, edge := range graphInfo.Edges {
 		edges[i] = &data.Edge{
-			GraphID:  gid,
-			ParentID: int(edge.Parent),
-			ChildID:  int(edge.Child),
-			Label:    edge.Label,
-			Shaper:   edge.Shaper,
-			Coorder:  edge.Coorder,
+			GraphID:   gid,
+			ParentID:  int(edge.Parent),
+			ChildID:   int(edge.Child),
+			Label:     edge.Label,
+			Shaper:    edge.Shaper,
+			Coorder:   edge.Coorder,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 	}
 
-	if err := data.Transaction(func(db *gorm.DB) (err error) {
+	if err := data.Transaction(func(db *sql.Tx) (err error) {
 		gData := data.NewGraphData(db)
 		if err = gData.CreateNodes(nodes); err != nil {
 			return
 		}
-		if err = gData.TagNodes(tags); err != nil {
+		if err = gData.UpsertNodeTags(tags); err != nil {
 			return
 		}
 		err = gData.CreateEdges(edges)
@@ -129,14 +132,15 @@ func (*emitterServer) UpdateNodeData(stream pb.GraphEmitter_UpdateNodeDataServer
 			datarr[i] = float64(datum)
 		}
 		dentry := &data.NodeData{
-			GraphID: dataInfo.GraphId,
-			NodeID:  int(dataInfo.NodeId),
-			RawData: datarr,
+			GraphID:   dataInfo.GraphId,
+			NodeID:    int(dataInfo.NodeId),
+			RawData:   datarr,
+			UpdatedAt: time.Now(),
 		}
 
-		if err := data.Transaction(func(db *gorm.DB) (err error) {
+		if err := data.Transaction(func(db *sql.Tx) (err error) {
 			gData := data.NewGraphData(db)
-			err = gData.UpdateData(dentry)
+			err = gData.UpsertData(dentry)
 			return
 		}); err != nil {
 			log.Error(err.Error())

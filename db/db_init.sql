@@ -11,9 +11,11 @@ SET default_with_oids = false;
 CREATE TABLE nodes (
     graph_id CHARACTER(36) NOT NULL,
     node_id INTEGER NOT NULL,
-    shape CHARACTER VARYING(32),
+    shape INTEGER[8],
     maxheight INTEGER,
-    minheight INTEGER
+    minheight INTEGER,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 
@@ -24,7 +26,9 @@ CREATE TABLE edges (
     child_id INTEGER NOT NULL,
     label CHARACTER VARYING(64) NOT NULL,
     shaper CHARACTER VARYING(512),
-    coorder CHARACTER VARYING(512)
+    coorder CHARACTER VARYING(512),
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 
@@ -41,7 +45,8 @@ CREATE TABLE node_tags (
 CREATE TABLE node_data (
     graph_id CHARACTER(36) NOT NULL,
     node_id INTEGER NOT NULL,
-    data DECIMAL[]
+    data DECIMAL[],
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 

@@ -2,15 +2,14 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"strconv"
-	"strings"
 
-	"github.com/jinzhu/gorm"
 	"github.com/mingkaic/ultrasound/data"
 	pb "github.com/mingkaic/ultrasound/viewer/proto"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -23,33 +22,39 @@ func NewViewerServer() pb.ViewerServer {
 	return &viewerServer{}
 }
 
-func convertDbShape(shape string) []uint32 {
-	slist := strings.Split(shape, ",")
-	out := make([]uint32, len(slist))
-	for i, dim := range slist {
-		val, err := strconv.ParseUint(dim, 10, 32)
-		if err != nil {
-			log.Errorf("unknown dimension %s: %+v", dim, err)
-		}
-		out[i] = uint32(val)
+func convertDbShape(shape []int64) []uint32 {
+	slist := make([]uint32, len(shape))
+	for i, dim := range shape {
+		slist[i] = uint32(dim)
 	}
-	return out
+	return slist
 }
 
 func (*viewerServer) ListGraphs(ctx context.Context, req *pb.ListGraphRequest) (*pb.ListGraphResponse, error) {
-	var gids []string
-	if err := data.Transaction(func(db *gorm.DB) (err error) {
+	var (
+		graphs    []*data.Graph
+		overviews []*pb.GraphOverview
+	)
+	if err := data.Transaction(func(db *sql.Tx) (err error) {
 		gData := data.NewGraphData(db)
-		gids, err = gData.ListGraphs()
+		graphs, err = gData.ListGraphs()
 		return
 	}); err != nil {
 		log.Error(err.Error())
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
+	overviews = make([]*pb.GraphOverview, len(graphs))
+	for i, graph := range graphs {
+		overviews[i] = &pb.GraphOverview{
+			GraphId: graph.GraphID,
+			Created: &timestamp.Timestamp{Seconds: graph.CreatedAt.Unix()},
+			Updated: &timestamp.Timestamp{Seconds: graph.UpdatedAt.Unix()},
+		}
+	}
 	return &pb.ListGraphResponse{
-		Result:  gids,
+		Result:  overviews,
 		Status:  pb.Status_OK,
-		Message: fmt.Sprintf("Got %d graphs", len(gids)),
+		Message: fmt.Sprintf("Got %d graphs", len(overviews)),
 	}, nil
 }
 
@@ -62,7 +67,7 @@ func (*viewerServer) GetGraph(ctx context.Context, req *pb.GetGraphRequest) (*pb
 			"graph_id": gid,
 		}
 	)
-	if err := data.Transaction(func(db *gorm.DB) (err error) {
+	if err := data.Transaction(func(db *sql.Tx) (err error) {
 		gData := data.NewGraphData(db)
 		nodes, err = gData.ListNodes(args)
 		if err != nil {
@@ -95,6 +100,8 @@ func (*viewerServer) GetGraph(ctx context.Context, req *pb.GetGraphRequest) (*pb
 				Maxheight: uint32(node.Maxheight),
 				Minheight: uint32(node.Minheight),
 			},
+			Created: &timestamp.Timestamp{Seconds: node.CreatedAt.Unix()},
+			Updated: &timestamp.Timestamp{Seconds: node.UpdatedAt.Unix()},
 		}
 	}
 	for i, edge := range edges {
@@ -104,6 +111,8 @@ func (*viewerServer) GetGraph(ctx context.Context, req *pb.GetGraphRequest) (*pb
 			Label:   edge.Label,
 			Shaper:  edge.Shaper,
 			Coorder: edge.Coorder,
+			Created: &timestamp.Timestamp{Seconds: edge.CreatedAt.Unix()},
+			Updated: &timestamp.Timestamp{Seconds: edge.UpdatedAt.Unix()},
 		}
 	}
 	result := &pb.GraphInfo{
@@ -130,7 +139,7 @@ func (*viewerServer) GetNodeData(ctx context.Context, req *pb.GetNodeDataRequest
 	gid := req.GraphId
 	nid := req.NodeId
 
-	if err := data.Transaction(func(db *gorm.DB) (err error) {
+	if err := data.Transaction(func(db *sql.Tx) (err error) {
 		gData := data.NewGraphData(db)
 		node, err = gData.GetNodeData(gid, int(nid))
 		return
@@ -147,6 +156,7 @@ func (*viewerServer) GetNodeData(ctx context.Context, req *pb.GetNodeDataRequest
 			GraphId: gid,
 			NodeId:  nid,
 			Data:    rdata,
+			Updated: &timestamp.Timestamp{Seconds: node.UpdatedAt.Unix()},
 		},
 		Status:  pb.Status_OK,
 		Message: fmt.Sprintf("Got node %d of graph %s", nid, gid),

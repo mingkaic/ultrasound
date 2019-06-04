@@ -7,14 +7,15 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"database/sql"
+
 	log "github.com/sirupsen/logrus"
 
-	"github.com/jinzhu/gorm"
+	_ "github.com/lib/pq" // postgres driver
 )
 
 var (
-	db     *gorm.DB
+	db     *sql.DB
 	onceDB sync.Once
 )
 
@@ -25,7 +26,6 @@ type DBParams struct {
 	User         string
 	Password     string
 	Retries      int
-	Log          bool
 	MaxOpenConns int
 	MaxIdleConns int
 }
@@ -38,7 +38,6 @@ func (dbParam *DBParams) DeclFlags() {
 	flag.StringVar(&dbParam.Password, "db.password", "", "database password")
 	flag.IntVar(&dbParam.Retries, "db.retries", 3,
 		"number of retries to access database")
-	flag.BoolVar(&dbParam.Log, "db.log", true, "true if log db transactions")
 	flag.IntVar(&dbParam.MaxOpenConns, "db.max_open_conn", 16,
 		"max number of open connections")
 	flag.IntVar(&dbParam.MaxIdleConns, "db.max_idle_conn", 16,
@@ -68,7 +67,7 @@ func Open(params *DBParams) {
 		var err error
 		for i := 0; i <= params.Retries; i++ {
 			log.Infof("Attempt to connect to database: %s:%d", params.Host, params.Port)
-			db, err = gorm.Open("postgres", dbstring)
+			db, err = sql.Open("postgres", dbstring)
 			if err == nil {
 				log.Infof("Successfully connected to a database.")
 				break
@@ -85,9 +84,8 @@ func Open(params *DBParams) {
 			log.Fatalf(err.Error())
 		}
 
-		db.DB().SetMaxOpenConns(params.MaxOpenConns)
-		db.DB().SetMaxIdleConns(params.MaxIdleConns)
-		db.LogMode(params.Log)
+		db.SetMaxOpenConns(params.MaxOpenConns)
+		db.SetMaxIdleConns(params.MaxIdleConns)
 	})
 }
 
@@ -99,22 +97,22 @@ func Close() {
 	}
 }
 
-func DB() *gorm.DB {
+func DB() *sql.DB {
 	return db
 }
 
-func Transaction(f func(db *gorm.DB) error) error {
-	transaction := DB().Begin()
-	if err := transaction.Error; err != nil {
+func Transaction(f func(db *sql.Tx) error) error {
+	transaction, err := db.Begin()
+	if err != nil {
 		return err
 	}
 
 	if err := f(transaction); err != nil {
-		if transErr := transaction.Rollback().Error; transErr != nil {
+		if transErr := transaction.Rollback(); transErr != nil {
 			log.Errorf("Failed to rollback DB transaction: %v", transErr)
 		}
 		return err
 	}
 
-	return transaction.Commit().Error
+	return transaction.Commit()
 }
