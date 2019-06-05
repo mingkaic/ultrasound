@@ -17,6 +17,7 @@ import (
 var (
 	db     *sql.DB
 	onceDB sync.Once
+	logSQL bool
 )
 
 type DBParams struct {
@@ -42,6 +43,7 @@ func (dbParam *DBParams) DeclFlags() {
 		"max number of open connections")
 	flag.IntVar(&dbParam.MaxIdleConns, "db.max_idle_conn", 16,
 		"max number of idle connections")
+	flag.BoolVar(&logSQL, "db.log", true, "whether to log db statements")
 }
 
 func Open(params *DBParams) {

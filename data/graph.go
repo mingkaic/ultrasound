@@ -69,17 +69,7 @@ type (
 	}
 )
 
-var (
-	upsertTagStmtFmt = upsertStmt{
-		into: "node_tags",
-		keyFields: []string{
-			"graph_id", "node_id", "tag_key",
-		},
-		updateFields: []string{
-			"tag_val",
-		},
-	}
-)
+const batch_limit = 1000
 
 func NewGraphData(db *sql.Tx) GraphData {
 	return &graphData{db: db}
@@ -249,31 +239,47 @@ func (d *graphData) TagNode(node *Node) (*Node, error) {
 	return node, nil
 }
 
+func splitBatches(arr []interface{}) [][]interface{} {
+	nbatches := 1 + len(arr)/batch_limit
+	finalBatchsize := len(arr) % batch_limit
+	batches := make([][]interface{}, nbatches)
+	for i := range batches[:len(batches)-1] {
+		batches[i] = arr[i*batch_limit : (i+1)*batch_limit]
+	}
+	batches[len(batches)-1] = arr[len(arr)-finalBatchsize:]
+	return batches
+}
+
 func (d *graphData) CreateNodes(nodes []*Node) error {
+	log.Errorf("creating nodes %d...%d", nodes[0].NodeID, nodes[len(nodes)-1].NodeID)
 	nodeArgs := make([]interface{}, len(nodes))
 	for i, node := range nodes {
 		nodeArgs[i] = node
 	}
-	results, err := (&createStmt{
-		into: "nodes",
-		fields: []string{
-			"graph_id",
-			"node_id",
-			"shape",
-			"maxheight",
-			"minheight",
-			"created_at",
-			"updated_at",
-		},
-	}).modify(d.db, nodeArgs)
-	if err != nil {
-		return err
+	batches := splitBatches(nodeArgs)
+	for i, batch := range batches {
+		log.Infof("Processing %d nodes batch[%d/%d]", len(batch), i+1, len(batches)+1)
+		results, err := (&createStmt{
+			into: "nodes",
+			fields: []string{
+				"graph_id",
+				"node_id",
+				"shape",
+				"maxheight",
+				"minheight",
+				"created_at",
+				"updated_at",
+			},
+		}).modify(d.db, batch)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := results.RowsAffected()
+		if err != nil {
+			return err
+		}
+		log.Infof("Rows affected: %d", rowsAffected)
 	}
-	rowsAffected, err := results.RowsAffected()
-	if err != nil {
-		return err
-	}
-	log.Infof("Rows affected: %d", rowsAffected)
 	return nil
 }
 
@@ -282,27 +288,31 @@ func (d *graphData) CreateEdges(edges []*Edge) (err error) {
 	for i, edge := range edges {
 		edgeArgs[i] = edge
 	}
-	results, err := (&createStmt{
-		into: "edges",
-		fields: []string{
-			"graph_id",
-			"parent_id",
-			"child_id",
-			"label",
-			"shaper",
-			"coorder",
-			"created_at",
-			"updated_at",
-		},
-	}).modify(d.db, edgeArgs)
-	if err != nil {
-		return err
+	batches := splitBatches(edgeArgs)
+	for i, batch := range batches {
+		log.Infof("Processing %d edges batch[%d/%d]", len(batch), i+1, len(batches)+1)
+		results, err := (&createStmt{
+			into: "edges",
+			fields: []string{
+				"graph_id",
+				"parent_id",
+				"child_id",
+				"label",
+				"shaper",
+				"coorder",
+				"created_at",
+				"updated_at",
+			},
+		}).modify(d.db, batch)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := results.RowsAffected()
+		if err != nil {
+			return err
+		}
+		log.Infof("Rows affected: %d", rowsAffected)
 	}
-	rowsAffected, err := results.RowsAffected()
-	if err != nil {
-		return err
-	}
-	log.Infof("Rows affected: %d", rowsAffected)
 	return nil
 }
 
@@ -332,22 +342,26 @@ func (d *graphData) UpsertNodeTags(tags []*NodeTag) (err error) {
 	for i, tag := range tags {
 		tagArgs[i] = tag
 	}
-	results, err := (&upsertStmt{
-		into: "node_tags",
-		keyFields: []string{
-			"graph_id", "node_id", "tag_key",
-		},
-		updateFields: []string{
-			"tag_val",
-		},
-	}).modify(d.db, tagArgs)
-	if err != nil {
-		return err
+	batches := splitBatches(tagArgs)
+	for i, batch := range batches {
+		log.Infof("Processing %d tags batch[%d/%d]", len(batch), i+1, len(batches)+1)
+		results, err := (&upsertStmt{
+			into: "node_tags",
+			keyFields: []string{
+				"graph_id", "node_id", "tag_key",
+			},
+			updateFields: []string{
+				"tag_val",
+			},
+		}).modify(d.db, batch)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := results.RowsAffected()
+		if err != nil {
+			return err
+		}
+		log.Infof("Rows affected: %d", rowsAffected)
 	}
-	rowsAffected, err := results.RowsAffected()
-	if err != nil {
-		return err
-	}
-	log.Infof("Rows affected: %d", rowsAffected)
 	return nil
 }

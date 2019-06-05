@@ -213,6 +213,9 @@ func parseParams(params map[string]interface{}, sep string) (
 }
 
 func sqlLog(queryStmt string, args []interface{}) {
+	if !logSQL {
+		return
+	}
 	queryStmt = trimSpace(queryStmt)
 	if len(args) <= 0 {
 		log.Infof("[sql]: %s", queryStmt)
