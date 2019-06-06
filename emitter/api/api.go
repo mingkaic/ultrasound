@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"io"
+	"math"
 	"time"
 
 	"github.com/mingkaic/ultrasound/data"
@@ -129,7 +130,11 @@ func (*emitterServer) UpdateNodeData(stream pb.GraphEmitter_UpdateNodeDataServer
 		dataInfo := req.Payload
 		datarr := make([]float64, len(dataInfo.Data))
 		for i, datum := range dataInfo.Data {
-			datarr[i] = float64(datum)
+			if math.IsInf(float64(datum), 0) {
+				datarr[i] = math.NaN()
+			} else {
+				datarr[i] = float64(datum)
+			}
 		}
 		dentry := &data.NodeData{
 			GraphID:   dataInfo.GraphId,

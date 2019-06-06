@@ -5,6 +5,8 @@ services:
     environment:
       - POSTGRES_DB=ultra
     container_name: ultra-db
+    ports:
+      - '5432:5432'
   ultrasound:
     image: bazel/server:ultrasound_server
     command:
