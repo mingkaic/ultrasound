@@ -1,7 +1,7 @@
 version: '2'
 services:
   db:
-    image: ultra-db:latest
+    image: mkaichen/ultra-db:latest
     environment:
       - POSTGRES_DB=ultra
     container_name: ultra-db
