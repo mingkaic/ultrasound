@@ -1,5 +1,5 @@
 .PHONY: up
-up: build_db build_server
+up: build
 	docker-compose up -d
 
 .PHONY: down
@@ -9,6 +9,9 @@ down:
 .PHONY: restart
 restart: down up
 
+.PHONY: build
+build: build_db build_server
+
 .PHONY: build_db
 build_db:
 	docker build -t mkaichen/ultra-db db
@@ -16,6 +19,7 @@ build_db:
 .PHONY: build_server
 build_server:
 	bazel run //server:ultrasound_server
+	docker tag bazel/server:ultrasound_server mkaichen/ultrasound_server:latest
 
 .PHONY: push_db
 push_db: build_db

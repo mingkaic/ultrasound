@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"io"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/mingkaic/ultrasound/data"
@@ -35,15 +36,13 @@ func (*emitterServer) HealthCheck(ctx context.Context, req *pb.Empty) (*pb.Empty
 	return &pb.Empty{}, nil
 }
 
-func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphRequest) (*pb.CreateGraphResponse, error) {
-	graphInfo := req.Payload
+func PbToDbGraphInfo(graphInfo *pb.GraphInfo) ([]*data.Node, []*data.Edge, []*data.NodeTag, error) {
 	gid := graphInfo.GraphId
-
 	if nil == graphInfo.Nodes {
-		return nil, status.Errorf(codes.InvalidArgument, "missing nodes from GraphInfo")
+		return nil, nil, nil, status.Errorf(codes.InvalidArgument, "missing nodes from GraphInfo")
 	}
 	if nil == graphInfo.Edges {
-		return nil, status.Errorf(codes.InvalidArgument, "missing edges from GraphInfo")
+		return nil, nil, nil, status.Errorf(codes.InvalidArgument, "missing edges from GraphInfo")
 	}
 
 	nodes := make([]*data.Node, len(graphInfo.Nodes))
@@ -71,11 +70,13 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 			UpdatedAt: time.Now(),
 		}
 		for key, value := range node.Tags {
+			val := strings.Join(value.Strings, ",")
+			// todo: split values
 			tags = append(tags, &data.NodeTag{
 				GraphID: gid,
 				NodeID:  int(node.Id),
 				TagKey:  key,
-				TagVal:  value,
+				TagVal:  val,
 			})
 		}
 	}
@@ -91,6 +92,16 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
+	}
+	return nodes, edges, tags, nil
+}
+
+func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphRequest) (*pb.CreateGraphResponse, error) {
+	graphInfo := req.Payload
+
+	nodes, edges, tags, err := PbToDbGraphInfo(graphInfo)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := data.Transaction(func(db *sql.Tx) (err error) {
@@ -111,6 +122,39 @@ func (*emitterServer) CreateGraph(ctx context.Context, req *pb.CreateGraphReques
 	return &pb.CreateGraphResponse{
 		Status:  pb.Status_OK,
 		Message: "Successfully created graph",
+	}, nil
+}
+
+func (*emitterServer) UpdateGraph(ctx context.Context, req *pb.UpdateGraphRequest) (*pb.UpdateGraphResponse, error) {
+	graphInfo := req.Payload
+
+	nodes, edges, tags, err := PbToDbGraphInfo(graphInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := data.Transaction(func(db *sql.Tx) (err error) {
+		gData := data.NewGraphData(db)
+		if err = gData.DeleteNodes(graphInfo.GraphId); err != nil {
+			return
+		}
+
+		if err = gData.CreateNodes(nodes); err != nil {
+			return
+		}
+		if err = gData.UpsertNodeTags(tags); err != nil {
+			return
+		}
+		err = gData.CreateEdges(edges)
+		return
+	}); err != nil {
+		log.Error(err.Error())
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	return &pb.UpdateGraphResponse{
+		Status:  pb.Status_OK,
+		Message: "Successfully updated graph",
 	}, nil
 }
 

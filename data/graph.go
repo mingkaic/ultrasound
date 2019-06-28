@@ -62,6 +62,8 @@ type (
 		CreateEdges(edges []*Edge) error
 		UpsertData(data *NodeData) error
 		UpsertNodeTags(tags []*NodeTag) error
+
+		DeleteNodes(graphID string) error
 	}
 
 	graphData struct {
@@ -258,7 +260,7 @@ func (d *graphData) CreateNodes(nodes []*Node) error {
 	}
 	batches := splitBatches(nodeArgs)
 	for i, batch := range batches {
-		log.Infof("Processing %d nodes batch[%d/%d]", len(batch), i+1, len(batches)+1)
+		log.Infof("Processing %d nodes batch[%d/%d]", len(batch), i+1, len(batches))
 		results, err := (&createStmt{
 			into: "nodes",
 			fields: []string{
@@ -363,5 +365,73 @@ func (d *graphData) UpsertNodeTags(tags []*NodeTag) (err error) {
 		}
 		log.Infof("Rows affected: %d", rowsAffected)
 	}
+	return nil
+}
+
+func (d *graphData) DeleteData(params map[string]interface{}) error {
+	results, err := d.db.Exec("delete from node_data where graph_id=($1)", params["graph_id"])
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
+}
+
+func (d *graphData) DeleteTags(params map[string]interface{}) error {
+	results, err := d.db.Exec("delete from node_tags where graph_id=($1)", params["graph_id"])
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
+}
+
+func (d *graphData) DeleteEdges(params map[string]interface{}) error {
+	results, err := d.db.Exec("delete from edges where graph_id=($1)", params["graph_id"])
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
+	return nil
+}
+
+func (d *graphData) DeleteNodes(graphID string) error {
+	if err := d.DeleteData(map[string]interface{}{
+		"graph_id": graphID,
+	}); err != nil {
+		return err
+	}
+	if err := d.DeleteTags(map[string]interface{}{
+		"graph_id": graphID,
+	}); err != nil {
+		return err
+	}
+	if err := d.DeleteEdges(map[string]interface{}{
+		"graph_id": graphID,
+	}); err != nil {
+		return err
+	}
+	// todo: support delete stmt in gorm.go
+	results, err := d.db.Exec("delete from nodes where graph_id=($1)", graphID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		return err
+	}
+	log.Infof("Rows affected: %d", rowsAffected)
 	return nil
 }
