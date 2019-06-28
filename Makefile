@@ -12,6 +12,9 @@ restart: down up
 .PHONY: build
 build: build_db build_server
 
+.PHONY: push
+push: push_db push_server
+
 .PHONY: build_db
 build_db:
 	docker build -t mkaichen/ultra-db db
